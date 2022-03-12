@@ -278,8 +278,7 @@ void servo(Arguments args) {
    /*
     call("servo","Bi",servo_nr,servo_pos)
     servo pos is pwm if in range (500,2500)
-    servo pos is angle if in range (0,180)
-    No negative angles! Neutral is 90.
+    servo pos is angle if in range (-90,90)
     */
     uint8_t servo_nr;
     int32_t servo_pos;
@@ -302,13 +301,12 @@ void servo(Arguments args) {
     uartremote.send_command("servoack","B",0);
 }
 
-void servos(Arguments args) {
+void servos_gp(Arguments args) {
    /*
     call("servos","iiii",servo1_pos,servo2_pos,servo3_pos,servo4_pos)
     returns the game pad state to reduce number of calls.
     servo pos is pwm if in range (500,2500)
-    servo pos is angle if in range (0,180)
-    No negative angles! Neutral is 90.
+    servo pos is angle if in range (-90,90)
     */
     int32_t servo1_pos;
     int32_t servo2_pos;
@@ -322,12 +320,12 @@ void servos(Arguments args) {
     servo4.write(servo4_pos);
    
     if (myGamepad && myGamepad->isConnected()) {
-        uartremote.send_command("servosack","2H4h",myGamepad->buttons(),myGamepad->dpad(),
+        uartremote.send_command("servos_gpack","2H4h",myGamepad->buttons(),myGamepad->dpad(),
                                             myGamepad->axisX(),myGamepad->axisY(),
                                             myGamepad->axisRX(),myGamepad->axisRY());
     }
     else {
-        uartremote.send_command("servosack","2H4h",0,0,0,0,0,0);
+        uartremote.send_command("servos_gpack","2H4h",0,0,0,0,0,0);
     }
     // uartremote.send_command("servoack","B",0);
 }
@@ -380,7 +378,7 @@ void setup() {
     // uartremote.add_command("fft",&fft);
     uartremote.add_command("audio",&audio);
     uartremote.add_command("servo",&servo);
-    uartremote.add_command("servos",&servos);
+    uartremote.add_command("servos_gp",&servos_gp);
     uartremote.add_command("echo",&echo);
 
     String fv = BP32.firmwareVersion();
