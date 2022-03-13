@@ -379,6 +379,7 @@ void setup() {
     uartremote.add_command("audio",&audio);
     uartremote.add_command("servo",&servo);
     uartremote.add_command("servos_gp",&servos_gp);
+    uartremote.add_command("servos",&servos_gp);
     uartremote.add_command("echo",&echo);
 
     String fv = BP32.firmwareVersion();
