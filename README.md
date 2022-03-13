@@ -6,14 +6,14 @@ We have successfully tested it with PS4 and Ninentendo Switch controllers. PS3 w
 
 # Projects
 ## MINDSTORMS Spider
-- [MINDSTORMS code](#) is in the mpy-robot-tools repo
-- [Building instructions on Patreon](#)
+- [MINDSTORMS code](https://github.com/antonvh/mpy-robot-tools/blob/master/Example%20projects/bluepad_servo_spider.py) is in the mpy-robot-tools repo
+- [Building instructions on Patreon](https://www.patreon.com/posts/62344422)
 
 ![PS4 Spider](images/spider.jpg)
 
 ## MINDSTORMS Mecanum wheel car
-- [MINDSTORMS code](#) is in the mpy-robot-tools repo
-- [Building instructions on Patreon](#)
+- [MINDSTORMS code](https://github.com/antonvh/mpy-robot-tools/blob/master/Example%20projects/bluepad_mecanum_wheels.py) is in the mpy-robot-tools repo
+- [Building instructions on Patreon](https://www.patreon.com/posts/60769850)
 
 ![PS4 Mecanum wheel car](images/mecanum.jpg)
 
