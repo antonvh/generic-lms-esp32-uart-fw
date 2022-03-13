@@ -1,10 +1,47 @@
 # ESP-IDF + Arduino + Bluepad32 + Uartremote + LEGO Mindstorms
 
-![logo](https://gitlab.com/ricardoquesada/bluepad32-arduino/-/raw/main/img/bluepad32-arduino-logo.png)
-
-This is an ESP32 firmware that connects to most Bluetooth classic gamepads, based on Bluepad32. You can then call the esp32 over UART from your MINDSTORMS hub to get the gamepad state. We developed this firware specifically for the [LMS-ESP32 board](#), although it should run on most ESP32 devices.
+This is an ESP32 firmware that connects to most Bluetooth classic gamepads, based on Bluepad32. You can then call the esp32 over UART from your MINDSTORMS hub to get the gamepad state. We developed this firware specifically for the [LMS-ESP32 board](https://antonsmindstorms.com/product/wifi-python-esp32-board-for-mindstorms/), although it should run on most ESP32 devices.
 
 We have successfully tested it with PS4 and Ninentendo Switch controllers. PS3 will work too, but it is really hard to connect.
+
+# Projects
+## MINDSTORMS Spider
+- [MINDSTORMS code](#) is in the mpy-robot-tools repo
+- [Building instructions on Patreon](#)
+
+![PS4 Spider](images/spider.jpg)
+
+## MINDSTORMS Mecanum wheel car
+- [MINDSTORMS code](#) is in the mpy-robot-tools repo
+- [Building instructions on Patreon](#)
+
+![PS4 Mecanum wheel car](images/mecanum.jpg)
+
+# Setup
+## Flashing the build on an ESP32 device.
+Install esptool. I use pipenv, so I go `pipenv install esptool`. But for most people pip will be fine:
+```
+pip install esptool
+```
+
+Then enter the command below. Replace `/dev/cu.usbserial-143220` with the location your serial esp port. On linux this is often `/dev/ttyAMA0`
+```
+esptool.py -p /dev/cu.usbserial-143220 -b 460800 --before default_reset --after hard_reset --chip esp32 write_flash --flash_mode dio --flash_freq 40m --flash_size detect 0x10000 build/app-template.bin 0x1000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin
+```
+## Connecting the gamepad
+Once the LMS-ESP32 is powered on, it will pair with any gamepads it sees. Just put the gamepad in pairing mode. Most gamepads have a dedicated button for this. On the PS4 controller you need to hold the PS and SHARE buttons for a few seconds. The light on the controller turns blue once connected.
+
+# Background info
+
+This project is based on the bluepad template project 3.0.0 (Feb 28, 2022). If you want to update to update to a newer bluepad version, you need to clone the template again and copy these files over the template:
+- components/Adafruit_NeoPixel
+- components/UartRemote
+- components/arduinoFFT
+- components/ESP32Servo
+- main/arduino_main.cpp
+- main/CMakeLists.txt
+
+![logo](https://gitlab.com/ricardoquesada/bluepad32-arduino/-/raw/main/img/bluepad32-arduino-logo.png)
 
 This is an application to be used with [Espressif IoT Development Framework](https://github.com/espressif/esp-idf).
 
