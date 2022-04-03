@@ -20,13 +20,14 @@ We have successfully tested it with PS4 and Ninentendo Switch controllers. PS3 w
 # Setup
 ## Flashing the build on an ESP32 device.
 Install esptool. I use pipenv, so I go `pipenv install esptool`. But for most people pip will be fine:
-```
+``` sh
 pip install esptool
 ```
 
-Then enter the command below. Replace `/dev/cu.usbserial-143220` with the location your serial esp port. On linux this is often `/dev/ttyAMA0`
-```
-esptool.py -p /dev/cu.usbserial-143220 -b 460800 --before default_reset --after hard_reset --chip esp32 write_flash --flash_mode dio --flash_freq 40m --flash_size detect 0x10000 build/app-template.bin 0x1000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin
+Then enter the command below. It will autodetect the ESP32 if one is connected. If you have multiple boards connected, add `-p /dev/cu.usbserial-143220` (Mac) or `-p /dev/ttyAMA0` (Linux)
+
+``` sh
+esptool.py -b 460800 --before default_reset --after hard_reset --chip esp32 write_flash --flash_mode dio --flash_freq 40m --flash_size detect 0x10000 build/app-template.bin 0x1000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin
 ```
 ## Connecting the gamepad
 Once the LMS-ESP32 is powered on, it will pair with any gamepads it sees. Just put the gamepad in pairing mode. Most gamepads have a dedicated button for this. On the PS4 controller you need to hold the PS and SHARE buttons for a few seconds. The light on the controller turns blue once connected.
