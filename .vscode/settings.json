@@ -1,5 +1,9 @@
 {
     "idf.adapterTargetName": "esp32",
     "idf.flashType": "UART",
-    "idf.port": "/dev/cu.usbserial-143220"
+    "idf.port": "/dev/cu.usbserial-143220",
+    "idf.portWin": "COM4",
+    "files.associations": {
+        "new": "cpp"
+    }
 }

@@ -31,41 +31,23 @@ limitations under the License.
 #include <Arduino.h>
 #include <Wire.h>
 #include <Bluepad32.h>
-#include <UartRemote.h>
+//#include <UartRemote.h>
+#include <LPF2.h>
 #include <Adafruit_NeoPixel.h>
 #include <arduinoFFT.h>
 #include <ESP32Servo.h>
 
-const i2s_port_t I2S_PORT = I2S_NUM_0;
 
 static GamepadPtr myGamepad;
 
-UartRemote uartremote;
-
-arduinoFFT FFT = arduinoFFT(); /* Create FFT object */
-/*
-These values can be changed in order to evaluate the functions
-*/
-const uint16_t samples = 64; //This value MUST ALWAYS be a power of 2
-const double signalFrequency = 1000;
-const double samplingFrequency = 5000;
-const uint8_t amplitude = 100;
-/*
-These are the input and output vectors
-Input vectors receive computed results from FFT
-*/
-double vReal[samples];
-double vImag[samples];
-int16_t rawsamples[samples];
-
-float spectrum[5] = {};
-
-uint32_t audio_power=0;
-
-Arguments args;
 
 #define LED_PIN 12
 #define LED_COUNT 64
+
+#define RXD2 18
+#define TXD2 19
+
+EV3UARTEmulation sensor(RXD2, TXD2, 62, 115200);
 
 // use pointer allows to dynamically change nrumber of leds or pin
 // change strip.begin() to strip->begin(), etc.
@@ -111,276 +93,72 @@ void onDisconnectedGamepad(GamepadPtr gp) {
 }
 uint8_t old_led=0,rumble_force,rumble_duration;
 
-void connected(Arguments args) {
-    if (myGamepad && myGamepad->isConnected()) {
-        uartremote.send_command("connectedack","B",1);
-    } else {
-        uartremote.send_command("connectedack","B",0);
-    }
+
+void servo_neo_callback(byte buf[],byte s) {
+byte nr_short=int(s/2);
+  short vals[nr_short];
+  // Serial.printf("size %d, nr short %d\n",s,nr_short);
+  for (int i=0; i<nr_short; i++) {
+    vals[i]=buf[i*2]+buf[i*2+1]*128;
+    // Serial.printf("vals[%d]=%d\n",i,vals[i]);
+  }
+
+  // Serial.printf("servo %d %d %d %d\n",vals[0],vals[1],vals[2],vals[3]);
+  servo1.write(vals[0]);
+  servo2.write(vals[1]);
+  servo3.write(vals[2]);
+  servo4.write(vals[3]);
+ 
+  if (buf[8]==65) { // write led
+     strip->show();
+  } else if (buf[8]==66) { // init led
+     delete strip;
+     strip=new Adafruit_NeoPixel(buf[9],buf[10]); //nr_leds, pin
+  } else if (buf[8]==67) { // clear all leds led
+      for (int i=0; i<strip->numPixels(); i++ ) {
+        strip->setPixelColor(i,0,0,0);
+      }
+  } else {
+      strip->setPixelColor(buf[8],buf[9],buf[10],buf[11]);
+  }
 
 }
 
-void gamepad(Arguments args) {
-    if (myGamepad && myGamepad->isConnected()) {
-        uartremote.send_command("gamepadack","2H4h",myGamepad->buttons(),myGamepad->dpad(),
-                                            myGamepad->axisX(),myGamepad->axisY(),
-                                            myGamepad->axisRX(),myGamepad->axisRY());
-    }
-    else {
-        uartremote.send_command("gamepadack","2H4h",0,0,0,0,0,0);
-    }    
-}
+void neopixel_callback(byte buf[],byte s) {
+byte nr_short=int(s/2);
+  short vals[nr_short];
+  // Serial.println();
+  for (int i=0; i<nr_short; i++) {
+    vals[i]=buf[i*2]+buf[i*2+1]*128;
+    // Serial.printf("vals[%d]=%d\n",i,vals[i]);
+  }
 
-void led(Arguments args) {
-    uint8_t led_value;
-    unpack(args,&led_value);
-    if (led_value!=old_led) {
-        if (myGamepad && myGamepad->isConnected()) {
-            myGamepad->setPlayerLEDs(led_value & 0x0f);
-            old_led=led_value;
-        }
-    }
-    Serial.printf("LED on: %d\n", led_value);
-    uartremote.send_command("ledack","B",0);
-}
-
-void rumble(Arguments args) {
-    unpack(args,&rumble_force,&rumble_duration);
-
-    if ((rumble_force>0) && (rumble_duration>0)) {
-        if (myGamepad && myGamepad->isConnected()) {
-                myGamepad->setRumble(rumble_force /* force */, rumble_duration/* duration */);
-        }
-    }
-    Serial.printf("rumble force %d, duration%d\n", rumble_force,rumble_duration);
-    uartremote.send_command("rumbleack","B",0);
+  if (vals[0]==65) { // write led
+     strip->show();
+  } else if (vals[0]==66) { // init led
+      delete strip;
+     strip=new Adafruit_NeoPixel(vals[1],vals[2]); //nr_leds, pin
+     
+  }  else {
+      strip->setPixelColor(vals[0],vals[1],vals[2],vals[3]);
+  }
 }
 
 
-uint8_t scan_i2c(uint8_t addresses[]) {
-    byte error, address; //variable for error and I2C address
-    int nDevices=0;
-    for (address = 1; address < 127; address++ )
-    {
-        // The i2c_scanner uses the return value of
-        // the Write.endTransmisstion to see if
-        // a device did acknowledge to the address.
-        Wire.beginTransmission(address);
-        error = Wire.endTransmission();
-
-        if (error == 0)
-        {
-          addresses[nDevices]=address;
-          nDevices++;
-        }
-        
-    }
-    
-    return nDevices;
-}
-
-void i2c_scan(Arguments args) {
-  uint8_t addresses[128],nDevices;
-  nDevices=scan_i2c(addresses);  
-  char format[7]={};
-  sprintf(format,"B%ds",nDevices); // create variable format string
-  uartremote.send_command("i2c_scan",format,nDevices,addresses);
-}
-
-
-void i2c_read(Arguments args) {
-    /*
-    call("i2c_read","2B",address,len)
-    */
-    uint8_t address,len;
-    uint8_t buf[128];
-    char format[7]={};
-    unpack(args,&address,&len);
-    Wire.requestFrom(address, len);    // request 6 bytes from slave device #2
-    for (int i=0; i<len; i++) {
-        char c = Wire.read();    // receive a byte as character
-        buf[i]=c;
-    }
-   
-    sprintf(format,"%ds",len); // create variable format string
-    uartremote.send_command("i2c_readack",format,buf);
-}
-
-void i2c_read_reg(Arguments args) {
-    /*
-    call("i2c_read_reg","2B",address,reg,len)
-
-    returns: bytes: buf
-    */
-
-    uint8_t address,len,reg;
-    uint8_t buf[128];
-    char format[7]={};
-    unpack(args,&address,&reg,&len);
-
-    Wire.beginTransmission(address);    // Get the slave's attention, tell it we're sending a command byte
-    Wire.write(reg);                               //  The command byte, sets pointer to register with address of 0x32
-    Wire.requestFrom(address,len);          // Tell slave we need to read 1byte from the current register
-     for (int i=0; i<len; i++) {
-        char c = Wire.read();    // receive a byte as character
-        buf[i]=c;
-    }
-   
-    Wire.endTransmission();       
-   
-    sprintf(format,"%ds",len); // create variable format string
-    uartremote.send_command("i2c_read_regack",format,buf);
-}
-
-void neopixel(Arguments args) {
-    /*
-    call("neopixel","4B",nr,r,g,b) 
-    */
-   uint8_t led_nr,red,green,blue;
-   unpack(args,&led_nr,&red,&green,&blue);
-   strip->setPixelColor(led_nr, red, green, blue);
-   uartremote.send_command("neopixelack","B",0);
-}
-
-
-void neopixel_init(Arguments args) {
-    /*
-    call("neopixel_init","2B",nr_leds,pin) 
-    */
-   uint8_t nr_leds,pin;
-   unpack(args,&nr_leds,&pin);
-   delete strip;
-   strip=new Adafruit_NeoPixel(nr_leds,pin);
-   uartremote.send_command("neopixel_initack","B",0);
-}
-
-void neopixel_show(Arguments args) {
-    /*
-    call("neopixel_show") 
-    */
-   strip->show();
-   uartremote.send_command("neopixel_showack","B",0);
-}
-
-void fft(Arguments args){
-    uartremote.send_command("fftack","5f",
-              spectrum[0],spectrum[1],spectrum[2],spectrum[3],spectrum[4]);
-
-}
-
-void audio(Arguments args){
-    uartremote.send_command("audioack","I",audio_power);
-
-}
-
-
-void servo(Arguments args) {
-   /*
-    call("servo","Bi",servo_nr,servo_pos)
-    servo pos is pwm if in range (500,2500)
-    servo pos is angle if in range (-90,90)
-    */
-    uint8_t servo_nr;
-    int32_t servo_pos;
-    unpack(args,&servo_nr,&servo_pos);
-    Serial.printf("servo_nr %d, pos%d\n",servo_nr,servo_pos);
-    switch (servo_nr) {
-        case 1: servo1.write(servo_pos);
-                break;
-        case 2: servo2.write(servo_pos);
-                break;
-        case 3: servo3.write(servo_pos);
-                break;
-        case 4: servo4.write(servo_pos);
-                break;
-        default:
-                break;
-                
-    } 
-   
-    uartremote.send_command("servoack","B",0);
-}
-
-void servos_gp(Arguments args) {
-   /*
-    call("servos","iiii",servo1_pos,servo2_pos,servo3_pos,servo4_pos)
-    returns the game pad state to reduce number of calls.
-    servo pos is pwm if in range (500,2500)
-    servo pos is angle if in range (-90,90)
-    */
-    int32_t servo1_pos;
-    int32_t servo2_pos;
-    int32_t servo3_pos;
-    int32_t servo4_pos;
-    unpack(args, &servo1_pos, &servo2_pos, &servo3_pos, &servo4_pos);
-    Serial.printf("servo_nr %d, pos%d\n",1,servo1_pos);
-    servo1.write(servo1_pos);
-    servo2.write(servo2_pos);
-    servo3.write(servo3_pos);
-    servo4.write(servo4_pos);
-   
-    if (myGamepad && myGamepad->isConnected()) {
-        uartremote.send_command("servos_gpack","2H4h",myGamepad->buttons(),myGamepad->dpad(),
-                                            myGamepad->axisX(),myGamepad->axisY(),
-                                            myGamepad->axisRX(),myGamepad->axisRY());
-    }
-    else {
-        uartremote.send_command("servos_gpack","2H4h",0,0,0,0,0,0);
-    }
-    // uartremote.send_command("servoack","B",0);
-}
-
-void echo(Arguments args) {
-    uint32_t n;
-    float f;
-    unpack(args,&n,&f);
-    switch (n) {
-        case 1: 
-            uartremote.send_command("echoack","f",f);
-            break;
-        case 2: 
-            uartremote.send_command("echoack","2f",f,2*f);
-            break;
-        case 3: 
-            uartremote.send_command("echoack","3f",f,2*f,3*f);
-            break;
-        case 4: 
-            uartremote.send_command("echoack","4f",f,2*f,3*f,4*f);
-            break;
-        case 5: 
-            uartremote.send_command("echoack","5f",f,2*f,3*f,4*f,5*f);
-            break;
-        default:
-            uartremote.send_command("echoack","f",0);
-    }
-   
-}
 
 // Arduino setup function. Runs in CPU 1
 void setup() {
     Serial.begin(115200);
+    sensor.create_mode("GAMEPAD", true, DATA16, 6, 5, 0,0.0f,512.0f,0.0f,1024.0f,0.0f,100.0f,"XYBD",0,ABSOLUTE); //map in and map out unit = "XYBD" = x, y, buttons, d-pad
+    sensor.create_mode("NEOPIXEL", true, DATA16, 4, 5, 0,0.0f,500.0f,0.0f,100.0f,0.0f,1024.0f,"NRGB", 0,ABSOLUTE); //map in and map out, units='NRGB'
+    sensor.create_mode("GAMEPAD2", true, DATA16, 4, 5, 0,0.0f,512.0f,0.0f,1024.0f,0.0f,100.0f,"XYBD",0,ABSOLUTE); //map in and map out unit = "XYBD" = x, y, buttons, d-pad
+  
+    sensor.get_mode(0)->setCallback(servo_neo_callback);  // attach call back function to mode 0
+    sensor.get_mode(1)->setCallback(neopixel_callback);  // attach neopixel call back function to mode 1
     Wire.begin(5,4); // sda=pin(5), scl=Pin(4)
     strip->begin();
     strip->show(); // Initialize all pixels to 'off'
 
-
-    // add uartremote commands
-    uartremote.add_command("connected",&connected);
-    uartremote.add_command("gamepad",&gamepad);
-    uartremote.add_command("led", &led);
-    uartremote.add_command("rumble", &rumble);
-    uartremote.add_command("i2c_scan", &i2c_scan);
-    uartremote.add_command("i2c_read", &i2c_read);
-    uartremote.add_command("i2c_read_reg", &i2c_read_reg);
-    uartremote.add_command("neopixel",&neopixel);
-    uartremote.add_command("neopixel_show",&neopixel_show);
-    uartremote.add_command("neopixel_init",&neopixel_init);
-    // uartremote.add_command("fft",&fft);
-    uartremote.add_command("audio",&audio);
-    uartremote.add_command("servo",&servo);
-    uartremote.add_command("servos_gp",&servos_gp);
-    uartremote.add_command("servos",&servos_gp);
-    uartremote.add_command("echo",&echo);
 
     String fv = BP32.firmwareVersion();
     Serial.print("Firmware: ");
@@ -396,42 +174,9 @@ void setup() {
     // But might also fix some connection / re-connection issues.
     BP32.forgetBluetoothKeys();
 
-#define SAMPLE_RATE 5000
+    sensor.reset();
+    delay(200);
 
-    // I2S
-const i2s_config_t i2s_config = {
-    .mode = i2s_mode_t(I2S_MODE_MASTER | I2S_MODE_RX), // receive
-    .sample_rate = SAMPLE_RATE,                        // 44100 (44,1KHz)
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT, // 32 bits per sample
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,  // use right channel
-    .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1, // interrupt level 1
-    .dma_buf_count = 64,                      // number of buffers
-    .dma_buf_len = 512};       // 512
-
-    // pin config
-const i2s_pin_config_t pin_config = {
-    .bck_io_num = 33,            // serial clock, sck (gpio 33)
-    .ws_io_num = 27,              // word select, ws (gpio 32)
-    .data_out_num = I2S_PIN_NO_CHANGE, // only used for speakers
-    .data_in_num = 32             // serial data, sd (gpio 34)
-    };
-
-// config i2s driver and pins
-// fct must be called before any read/write
-esp_err_t err = i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
-if (err != ESP_OK)
-{
-    Serial.printf("Failed installing the driver: %d\n", err);
-}
-
-err = i2s_set_pin(I2S_PORT, &pin_config);
-if (err != ESP_OK)
-{
-    Serial.printf("Failed setting pin: %d\n", err);
-}
-
-Serial.println("I2S driver installed! :-)");
 
 // servo's
 	ESP32PWM::allocateTimer(0);
@@ -443,7 +188,7 @@ Serial.println("I2S driver installed! :-)");
 	servo2.setPeriodHertz(50);      // Standard 50hz servo
 	servo3.setPeriodHertz(50);      // Standard 50hz servo
 	servo4.setPeriodHertz(50);      // Standard 50hz servo
-    servo1.attach(servo1Pin, minUs, maxUs);
+  servo1.attach(servo1Pin, minUs, maxUs);
 	servo2.attach(servo2Pin, minUs, maxUs);
 	servo3.attach(servo3Pin, minUs, maxUs);
 	servo4.attach(servo4Pin, minUs, maxUs);
@@ -453,6 +198,10 @@ Serial.println("I2S driver installed! :-)");
 
 int refresh_BP32=0;
 // Arduino loop function. Runs in CPU 1
+
+
+unsigned long last_reading = 0;
+
 void loop() {
     // This call fetches all the gamepad info from the NINA (ESP32) module.
     // Just call this function in your main loop.
@@ -463,13 +212,47 @@ void loop() {
         BP32.update();
         refresh_BP32=0;
     }
-    if (uartremote.available()>0) {
-        int error = uartremote.receive_execute();
-        if (error==1) {
-            printf("error in receiving command\n");
+
+
+  sensor.heart_beat();
+    if (millis() - last_reading > 20) {
+      int mode=sensor.get_current_mode();
+      if (mode==0) {
+        short bb[8];
+
+        if (myGamepad && myGamepad->isConnected()) {
+          //myGamepad->buttons(),myGamepad->dpad(),
+          bb[0]=myGamepad->axisX();
+          bb[1]=myGamepad->axisY();
+          bb[2]=myGamepad->axisRX();
+          bb[3]=myGamepad->axisRY();
+          bb[4]=myGamepad->buttons();
+          bb[5]=myGamepad->dpad();
+  //         myGamepad->axisRX(),myGamepad->axisRY());
         }
+        sensor.send_data16(bb,8);
+      } 
+      else if (mode==2) {
+        short bb[4];
+
+        if (myGamepad && myGamepad->isConnected()) {
+          //myGamepad->buttons(),myGamepad->dpad(),
+          bb[0]=myGamepad->axisRX();
+          bb[1]=myGamepad->axisRY();
+          bb[2]=myGamepad->buttons();
+          bb[3]=myGamepad->dpad();
+        }
+
+        sensor.send_data16(bb,4); 
+      } 
+      else   Serial.printf("mode=%d\n",mode);
+
+      last_reading = millis();
     }
-    delay(1);
+
+
+   
+
 
     // https://github.com/espressif/arduino-esp32/issues/595
     TIMERG0.wdt_wprotect=TIMG_WDT_WKEY_VALUE;
@@ -478,41 +261,5 @@ void loop() {
 
 
    
-    // 64 samples @ 5000 Hz = 12.8ms chunks of samples --> FFT --> 32 frequency points
-    /*
-    size_t i2s_bytes_read;
-    i2s_read(I2S_PORT, rawsamples, 64, &i2s_bytes_read, 100);
-    int32_t blockSum = rawsamples[0];
-
-    for (uint16_t i = 1; i < 64; i++)
-    {
-        // blockSum += rawsamples[i]
-        blockSum += abs(rawsamples[i]); // abs
-    }
-    audio_power=blockSum;
-    */
-    /*
-    // Compute average value for the current sample block
-    int16_t blockAvg = blockSum / 64;
-    // Constant for normalizing int16 input values to floating point range -1.0 to 1.0
-    const float kInt16MaxInv = 1.0f / __INT16_MAX__;
-    for (uint16_t i = 0; i < samples; i++)
-    {
-        vReal[i] = (rawsamples[i]-blockAvg)*kInt16MaxInv;// Build data with positive and negative values
-        vImag[i] = 0.0; //Imaginary part must be zeroed in case of looping to avoid wrong calculations and overflows
-    }
-    // FFT.DCRemoval(vReal, samples);
-    FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);	// Weigh data 
-    FFT.Compute(vReal, vImag, samples, FFT_FORWARD); // Compute FFT 
-    FFT.ComplexToMagnitude(vReal, vImag, samples); // Compute magnitudes 
-    // make 5 bins of the power spectrum
-    for (uint8_t i=0; i<5; i++) {
-        double s=0;
-        for (uint8_t j=0; j<6; j++ ) {
-           s+=vReal[i*6+j+1]; // +1 skip dc compontent
-        }
-        spectrum[i]=s; // update spectrum array
-    }
-    */
- 
+    
 }
